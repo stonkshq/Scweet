@@ -13,7 +13,7 @@ import json
 import re
 import os
 import math
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Awaitable, Callable, Optional, Union, List
 
 import platform
@@ -313,7 +313,56 @@ class Scweet:
             )
             self.driver.cookies.set_cookie(c)
 
+    def _parse_datetime(self, value: str) -> Optional[datetime]:
+        if not value:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        try:
+            if cleaned.endswith('Z'):
+                cleaned = cleaned[:-1] + '+00:00'
+            dt = datetime.fromisoformat(cleaned)
+        except ValueError:
+            # Fallback for alternate precision formats
+            try:
+                dt = datetime.strptime(cleaned, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                return None
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+
+    def _coerce_since_datetime(self, since: Union[str, datetime]) -> datetime:
+        if isinstance(since, datetime):
+            since_dt = since
+        elif isinstance(since, str):
+            parsed = self._parse_datetime(since)
+            if not parsed:
+                raise ValueError("Invalid 'since' datetime string provided.")
+            since_dt = parsed
+        else:
+            raise TypeError("'since' must be a datetime or ISO-8601 string.")
+
+        if since_dt.tzinfo is not None:
+            since_dt = since_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return since_dt
+
+    def _is_promoted_card(self, post_soup) -> bool:
+        promotional_markers = {'promoted', 'sponsored', 'advertisement'}
+        text_matches = post_soup.find_all(
+            string=lambda t: t and any(marker in t.lower() for marker in promotional_markers)
+        )
+        if text_matches:
+            return True
+        if post_soup.select_one('div[data-testid="placementTracking"]'):
+            return True
+        return False
+
     async def get_data(self, post_soup):
+        if self._is_promoted_card(post_soup):
+            return None
+
         # username
         username_tag = post_soup.find('span')
         username = username_tag.get_text(strip=True) if username_tag else ""
@@ -350,11 +399,6 @@ class Scweet:
             src = img.get('src', '')
             if 'https://pbs.twimg.com/' in src:
                 image_links.append(src)
-
-        # Check if promoted
-        promoted_tag = post_soup.find('span', text='Promoted')
-        if promoted_tag:
-            return None  # Ignore promoted tweets
 
         # Emojis
         emoji_tags = post_soup.find_all('img', src=lambda s: s and 'emoji' in s)
@@ -464,17 +508,26 @@ class Scweet:
 
 
 
-    async def consume_html(self, html_queue, index, all_posts_data):
+    async def consume_html(self, html_queue, index, all_posts_data, since_dt: Optional[datetime] = None,
+                           stop_event: Optional[asyncio.Event] = None, persist: bool = True):
         """
         This coroutine runs concurrently with the main fetch loop.
         It consumes HTML from the queue and updates all_posts_data.
         """
         while True:
             html_el = await html_queue.get()
-            await self.aget_data(html_el, index, all_posts_data)
+            await self.aget_data(
+                html_el,
+                index,
+                all_posts_data,
+                since_dt=since_dt,
+                stop_event=stop_event,
+                persist=persist
+            )
             html_queue.task_done()
 
-    async def aget_data(self, html_content, index, all_posts_data):
+    async def aget_data(self, html_content, index, all_posts_data, since_dt: Optional[datetime] = None,
+                        stop_event: Optional[asyncio.Event] = None, persist: bool = True):
         data_file_name = f"data_{index}.json"
         soup = BeautifulSoup(html_content, 'html.parser')
         posts = soup.select('article[data-testid=tweet]')
@@ -483,11 +536,23 @@ class Scweet:
             if data:
                 # Use the tweet_url as key
                 tweet_id = data['tweet_url'].split("/")[-1]
+                if not tweet_id:
+                    continue
+
+                if since_dt is not None:
+                    post_dt = self._parse_datetime(data.get('postdate'))
+                    if not post_dt:
+                        continue
+                    if post_dt < since_dt:
+                        if stop_event and not stop_event.is_set():
+                            stop_event.set()
+                        continue
                 if tweet_id not in all_posts_data:
                     all_posts_data[tweet_id] = data
-                    # Instead of continually reading and writing data.json, we write a separate file per task:
-                    with open(data_file_name, "w") as f:
-                        json.dump(all_posts_data, f)
+                    if persist:
+                        # Instead of continually reading and writing data.json, we write a separate file per task:
+                        with open(data_file_name, "w") as f:
+                            json.dump(all_posts_data, f)
         logging.info(f"[tab {index}] Extracted {len(all_posts_data)} tweets in total")
         return all_posts_data
 
@@ -546,12 +611,75 @@ class Scweet:
 
         return all_posts_data
 
+    async def fetch_feed(self, since_dt: datetime, limit: float = float("inf")):
+        tab = await self.driver.get("https://x.com/home", new_tab=True)
+        await tab.sleep(3)
+
+        all_posts_data = {}
+        html_queue = asyncio.Queue()
+        stop_event = asyncio.Event()
+        consumer_task = asyncio.create_task(
+            self.consume_html(
+                html_queue,
+                index="feed",
+                all_posts_data=all_posts_data,
+                since_dt=since_dt,
+                stop_event=stop_event,
+                persist=False
+            )
+        )
+
+        last_len = 0
+        stale_rounds = 0
+
+        try:
+            while True:
+                await tab.activate()
+                html_el = await tab.get_content()
+                await html_queue.put(html_el)
+                await html_queue.join()
+
+                current_len = len(all_posts_data)
+                if current_len == last_len:
+                    stale_rounds += 1
+                else:
+                    stale_rounds = 0
+                    last_len = current_len
+
+                if current_len >= limit:
+                    logging.info("Reached requested feed tweet limit.")
+                    break
+
+                if stop_event.is_set():
+                    logging.info("Reached tweets older than provided 'since'.")
+                    break
+
+                if stale_rounds >= 3:
+                    logging.info("No new tweets detected in home feed after multiple scrolls; stopping.")
+                    break
+
+                await tab.scroll_down(self.scroll_ratio)
+                await tab.sleep(1)
+        finally:
+            consumer_task.cancel()
+            try:
+                await consumer_task
+            except asyncio.CancelledError:
+                pass
+
+            await tab.close()
+
+        return all_posts_data
+
     def scrape(self, **scrape_kwargs):
         """
         Synchronously execute the asynchronous scrape method.
         Users can call this method without handling asyncio themselves.
         """
         return asyncio.run(self.ascrape(**scrape_kwargs))
+
+    def scrape_feed(self, **scrape_kwargs):
+        return asyncio.run(self.ascrape_feed(**scrape_kwargs))
 
     async def ascrape(
             self,
@@ -573,10 +701,11 @@ class Scweet:
             minreplies=None,
             minlikes=None,
             minretweets=None,
-            custom_csv_name=None
+            custom_csv_name=None,
+            save_csv: bool = True
     ):
         """
-        Scrape tweets between [since, until] using concurrency, writing incrementally to CSV.
+        Scrape tweets between [since, until] using concurrency, optionally writing incrementally to CSV.
         If resume=True and a CSV file with the same name exists, we read its max 'Timestamp'
         and override `since` if it is more recent.
         """
@@ -592,46 +721,50 @@ class Scweet:
         if words and isinstance(words, str):
             words = words.split("//")
 
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
+        if not save_csv and resume:
+            logging.info("Resume requested but save_csv=False; disabling resume.")
+            resume = False
 
-        if words:
-            fname_part = '_'.join(words)
-        elif from_account:
-            fname_part = from_account
-        elif to_account:
-            fname_part = to_account
-        elif mention_account:
-            fname_part = mention_account
-        elif hashtag:
-            fname_part = hashtag
-        else:
-            fname_part = "tweets"
+        csv_filename = None
+        write_mode = "w"
 
-        if not custom_csv_name:
-            csv_filename = f"{save_dir}/{fname_part}_{since}_{until}.csv"
-        else:
-            csv_filename = f'{save_dir}/{custom_csv_name}'
+        if save_csv:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
 
-        # If resume is True and the CSV already exists, read the last date
-        if resume and os.path.exists(csv_filename):
-            last_date_str = self.get_last_date_from_csv(csv_filename)
-            if last_date_str:
-                try:
-                    # parse the CSV's last date (which we store as ISO8601 w/ 'T' but might have .000Z)
-                    last_date_dt = datetime.fromisoformat(last_date_str.replace('Z', ''))
-                    # Compare with the user-provided 'since' date
-                    user_since_dt = datetime.strptime(since, "%Y-%m-%d")
+            if words:
+                fname_part = '_'.join(words)
+            elif from_account:
+                fname_part = from_account
+            elif to_account:
+                fname_part = to_account
+            elif mention_account:
+                fname_part = mention_account
+            elif hashtag:
+                fname_part = hashtag
+            else:
+                fname_part = "tweets"
 
-                    # If the CSV's last timestamp is more recent, override
-                    if last_date_dt.date() >= user_since_dt.date():
-                        # new since = that CSV date
-                        new_since_str = last_date_dt.strftime("%Y-%m-%d")
-                        logging.info(f"[resume=True] Overriding since={since} -> {new_since_str}")
-                        since = new_since_str
-                except Exception as e:
-                    logging.info(f"Could not parse last date from CSV: {e}")
-                    # keep the original since
+            if not custom_csv_name:
+                csv_filename = os.path.join(save_dir, f"{fname_part}_{since}_{until}.csv")
+            else:
+                csv_filename = custom_csv_name if os.path.isabs(custom_csv_name) else os.path.join(save_dir, custom_csv_name)
+
+            if resume and os.path.exists(csv_filename):
+                last_date_str = self.get_last_date_from_csv(csv_filename)
+                if last_date_str:
+                    try:
+                        last_date_dt = datetime.fromisoformat(last_date_str.replace('Z', ''))
+                        user_since_dt = datetime.strptime(since, "%Y-%m-%d")
+
+                        if last_date_dt.date() >= user_since_dt.date():
+                            new_since_str = last_date_dt.strftime("%Y-%m-%d")
+                            logging.info(f"[resume=True] Overriding since={since} -> {new_since_str}")
+                            since = new_since_str
+                    except Exception as e:
+                        logging.info(f"Could not parse last date from CSV: {e}")
+
+            write_mode = "a" if (resume and csv_filename and os.path.exists(csv_filename)) else "w"
 
         # 2) Prepare the CSV header
         # -----------------------------------------
@@ -664,18 +797,17 @@ class Scweet:
 
         logging.info(f"{len(urls)} urls generated")
 
-        # 4) Figure out write mode for CSV
-        # -----------------------------------------
-        write_mode = "a" if (resume and os.path.exists(csv_filename)) else "w"
         total_tweets = 0
         all_data = {}
 
-        # 5) Open the CSV file
-        # -----------------------------------------
-        with open(csv_filename, write_mode, newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if write_mode == "w":
-                writer.writerow(header)
+        csv_file = None
+        writer = None
+        try:
+            if save_csv and csv_filename:
+                csv_file = open(csv_filename, write_mode, newline="", encoding="utf-8")
+                writer = csv.writer(csv_file)
+                if write_mode == "w":
+                    writer.writerow(header)
 
             # 6) Initialize driver + optional login
             # -----------------------------------------
@@ -701,19 +833,20 @@ class Scweet:
                     for tweet_id, tweet_data in result_dict.items():
                         row = [
                             tweet_id,
-                            tweet_data.get("handle", ""),  # "UserScreenName"
-                            tweet_data.get("username", ""),  # "UserName"
-                            tweet_data.get("postdate", ""),  # "Timestamp"
-                            tweet_data.get("text", ""),  # "Text"
-                            tweet_data.get("embedded", ""),  # "Embedded_text"
-                            tweet_data.get("emojis", ""),  # "Emojis"
-                            tweet_data.get("reply_cnt", "0"),  # "Comments"
-                            tweet_data.get("like_cnt", "0"),  # "Likes"
-                            tweet_data.get("retweet_cnt", "0"),  # "Retweets"
-                            " ".join(tweet_data.get("image_links", [])),  # "Image link"
-                            tweet_data.get("tweet_url", ""),  # "Tweet URL"
+                            tweet_data.get("handle", ""),
+                            tweet_data.get("username", ""),
+                            tweet_data.get("postdate", ""),
+                            tweet_data.get("text", ""),
+                            tweet_data.get("embedded", ""),
+                            tweet_data.get("emojis", ""),
+                            tweet_data.get("reply_cnt", "0"),
+                            tweet_data.get("like_cnt", "0"),
+                            tweet_data.get("retweet_cnt", "0"),
+                            " ".join(tweet_data.get("image_links", [])),
+                            tweet_data.get("tweet_url", "")
                         ]
-                        writer.writerow(row)
+                        if writer:
+                            writer.writerow(row)
                         total_tweets += 1
 
                         if total_tweets >= limit:
@@ -726,7 +859,10 @@ class Scweet:
 
             # 8) Done scraping
             # -----------------------------------------
-            logging.info(f"Scraping completed. Total tweets written: {total_tweets}")
+            if writer:
+                logging.info(f"Scraping completed. Total tweets written: {total_tweets}")
+            else:
+                logging.info(f"Scraping completed. Total tweets collected: {total_tweets}")
 
             # Cancel any lingering tasks before shutting down.
             pending_tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -736,8 +872,82 @@ class Scweet:
 
             # close driver if needed
             await self.close()
+        finally:
+            if csv_file:
+                csv_file.close()
 
         return all_data
+
+    async def ascrape_feed(
+            self,
+            since: Union[str, datetime],
+            limit: float = float("inf"),
+            save_dir: str = "outputs",
+            custom_csv_name: Optional[str] = None,
+            save_csv: bool = True
+    ):
+        if not self.driver:
+            await self.init_nodriver()
+
+        since_dt = self._coerce_since_datetime(since)
+
+        csv_filename = None
+        if save_csv:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+
+            if not custom_csv_name:
+                csv_filename = os.path.join(
+                    save_dir,
+                    f"feed_{since_dt.strftime('%Y%m%dT%H%M%S')}.csv"
+                )
+            else:
+                csv_filename = custom_csv_name if os.path.isabs(custom_csv_name) else os.path.join(save_dir, custom_csv_name)
+
+        header = [
+            "tweetId", "UserScreenName", "UserName", "Timestamp", "Text",
+            "Embedded_text", "Emojis", "Comments", "Likes",
+            "Retweets", "Image link", "Tweet URL"
+        ]
+
+        _, logged_in, reason, _ = await self.login()
+        if not logged_in:
+            logging.info(f"Couldn't login due to {reason}")
+            return {}
+
+        feed_data = await self.fetch_feed(since_dt=since_dt, limit=limit)
+
+        csv_file = None
+        writer = None
+        try:
+            if save_csv and csv_filename:
+                csv_file = open(csv_filename, "w", newline="", encoding="utf-8")
+                writer = csv.writer(csv_file)
+                writer.writerow(header)
+
+            for tweet_id, tweet_data in feed_data.items():
+                if writer:
+                    writer.writerow([
+                        tweet_id,
+                        tweet_data.get("handle", ""),
+                        tweet_data.get("username", ""),
+                        tweet_data.get("postdate", ""),
+                        tweet_data.get("text", ""),
+                        tweet_data.get("embedded", ""),
+                        tweet_data.get("emojis", ""),
+                        tweet_data.get("reply_cnt", "0"),
+                        tweet_data.get("like_cnt", "0"),
+                        tweet_data.get("retweet_cnt", "0"),
+                        " ".join(tweet_data.get("image_links", [])),
+                        tweet_data.get("tweet_url", "")
+                    ])
+        finally:
+            if csv_file:
+                csv_file.close()
+
+        await self.close()
+
+        return feed_data
 
     def get_last_date_from_csv(self, path):
         """
