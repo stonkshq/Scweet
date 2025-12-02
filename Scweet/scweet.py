@@ -620,12 +620,8 @@ class Scweet:
             await self._handle_follow_confirmation(tab, handle)
             await tab.sleep(1)
 
-            if await self._is_already_following(tab):
-                outcome.update({"followed": True, "status": "now_following"})
-            elif await self._is_follow_request_pending(tab):
-                outcome["status"] = "pending_approval"
-            else:
-                outcome["status"] = "follow_action_not_confirmed"
+            confirmation = await self._confirm_follow_state(tab, handle)
+            outcome.update(confirmation)
 
             return outcome
         finally:
@@ -681,6 +677,40 @@ class Scweet:
                 continue
 
         return None
+
+    async def _confirm_follow_state(self, tab, handle):
+        normalized = (handle or "").strip().lower()
+        if normalized.startswith("@"):
+            normalized = normalized[1:]
+
+        status = {"followed": False, "status": "follow_action_not_confirmed"}
+
+        if await self._is_already_following(tab):
+            status.update({"followed": True, "status": "now_following"})
+            await tab.sleep(0.2)
+            return status
+
+        if await self._is_follow_request_pending(tab):
+            status["status"] = "pending_approval"
+            return status
+
+        if not normalized:
+            return status
+
+        for selector in [
+            "button[data-testid$='-unfollow']",
+            "div[data-testid$='-unfollow'][role='button']",
+        ]:
+            try:
+                element = await tab.select(selector, timeout=1)
+                aria_label = (await element.get_attribute("aria-label")) or ""
+                if f"@{normalized}" in aria_label.lower():
+                    status.update({"followed": True, "status": "now_following"})
+                    return status
+            except Exception:
+                continue
+
+        return status
 
     async def _is_already_following(self, tab):
         selectors = [
@@ -768,7 +798,11 @@ class Scweet:
         for candidate in candidates:
             aria_label_raw = candidate.get("aria-label", "")
             aria_label_lower = aria_label_raw.lower()
-            if f"@{normalized}" not in aria_label_lower:
+            if (
+                f"@{normalized}" not in aria_label_lower
+                or "follow" not in aria_label_lower
+                or "unfollow" in aria_label_lower
+            ):
                 continue
 
             try:
