@@ -612,7 +612,7 @@ class Scweet:
         return all_posts_data
 
     async def fetch_feed(self, since_dt: datetime, limit: float = float("inf")):
-        tab = await self.driver.get("https://x.com/home", new_tab=True)
+        tab = await self.driver.get("https://x.com/home?f=live", new_tab=True)
         await tab.sleep(3)
 
         all_posts_data = {}
@@ -679,6 +679,15 @@ class Scweet:
         return asyncio.run(self.ascrape(**scrape_kwargs))
 
     def scrape_feed(self, **scrape_kwargs):
+        """Synchronously run ``ascrape_feed`` with:
+
+        Args:
+            since: ``datetime`` or ISO-8601 string cutoff for newest tweet to keep.
+            limit: Maximum number of tweets to collect.
+            save_dir: Directory to persist CSV output when ``save_csv`` is true.
+            custom_csv_name: Optional filename override for the CSV output.
+            save_csv: Toggle to disable CSV writing while still returning tweet data.
+        """
         return asyncio.run(self.ascrape_feed(**scrape_kwargs))
 
     async def ascrape(
@@ -886,6 +895,17 @@ class Scweet:
             custom_csv_name: Optional[str] = None,
             save_csv: bool = True
     ):
+        """Scrape the authenticated home timeline using X's live/latest view.
+
+        Args:
+            since: ``datetime`` or ISO-8601 string; older tweets are ignored.
+            limit: Maximum tweets to fetch before stopping (defaults to no cap).
+            save_dir: Output directory used when persisting CSV files.
+            custom_csv_name: Optional filename override; can be absolute or relative to ``save_dir``.
+            save_csv: When false, skip CSV creation and only return the collected data.
+        Returns:
+            Dict mapping tweet ids to their harvested metadata.
+        """
         if not self.driver:
             await self.init_nodriver()
 
