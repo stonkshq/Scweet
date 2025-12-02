@@ -617,7 +617,7 @@ class Scweet:
 
             await follow_button.click()
             await tab.sleep(2)
-            await self._handle_follow_confirmation(tab)
+            await self._handle_follow_confirmation(tab, handle)
             await tab.sleep(1)
 
             if await self._is_already_following(tab):
@@ -634,6 +634,9 @@ class Scweet:
             if not stay_logged_in:
                 await self.close()
 
+    def _escape_css_attr(self, value: str) -> str:
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
     async def _locate_follow_button(self, tab, handle):
         normalized = (handle or "").strip().lower()
         if normalized.startswith("@"):
@@ -642,9 +645,6 @@ class Scweet:
 
         if not normalized:
             return None
-
-        def _css_escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace('"', '\\"')
 
         try:
             html = await tab.get_content()
@@ -670,7 +670,7 @@ class Scweet:
             elif candidate.name == "div" and data_testid:
                 selector = f"div[data-testid='{data_testid}'][role='button']"
             elif aria_label:
-                selector = f'{candidate.name}[aria-label="{_css_escape(aria_label)}"]'
+                selector = f'{candidate.name}[aria-label="{self._escape_css_attr(candidate.get("aria-label") or "")}"]'
 
             if not selector:
                 continue
@@ -735,7 +735,7 @@ class Scweet:
         except Exception:
             return False
 
-    async def _handle_follow_confirmation(self, tab):
+    async def _handle_follow_confirmation(self, tab, handle):
         selectors = [
             "div[data-testid='confirmationSheetConfirm']",
             "button[data-testid='confirmationSheetConfirm']",
@@ -751,9 +751,38 @@ class Scweet:
             except Exception:
                 continue
 
-        for label in ["Follow", "Yes"]:
+        normalized = (handle or "").strip().lower()
+        if normalized.startswith("@"):
+            normalized = normalized[1:]
+
+        if not normalized:
+            return False
+
+        try:
+            html = await tab.get_content()
+        except Exception:
+            return False
+
+        soup = BeautifulSoup(html, "html.parser")
+        candidates = soup.select("[role='button'][aria-label]")
+        for candidate in candidates:
+            aria_label_raw = candidate.get("aria-label", "")
+            aria_label_lower = aria_label_raw.lower()
+            if f"@{normalized}" not in aria_label_lower:
+                continue
+
             try:
-                confirm = await tab.find(label, best_match=True, timeout=2)
+                selector = None
+                data_testid = candidate.get("data-testid")
+                if data_testid:
+                    selector = f"{candidate.name}[data-testid='{data_testid}']"
+                elif aria_label_raw:
+                    selector = f'{candidate.name}[aria-label="{self._escape_css_attr(aria_label_raw)}"]'
+
+                if not selector:
+                    continue
+
+                confirm = await tab.select(selector, timeout=2)
                 await confirm.click()
                 await tab.sleep(1)
                 return True
