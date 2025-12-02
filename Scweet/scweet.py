@@ -610,7 +610,7 @@ class Scweet:
                 outcome.update({"followed": True, "status": "already_following"})
                 return outcome
 
-            follow_button = await self._locate_follow_button(tab)
+            follow_button = await self._locate_follow_button(tab, handle)
             if not follow_button:
                 outcome["status"] = "follow_cta_not_found"
                 return outcome
@@ -634,24 +634,53 @@ class Scweet:
             if not stay_logged_in:
                 await self.close()
 
-    async def _locate_follow_button(self, tab):
-        selectors = [
-            "button[data-testid$='-follow']",
-            "div[data-testid$='-follow'][role='button']",
-            "div[data-testid='placementTracking'] div[data-testid$='-follow']",
-            "div[data-testid='placementTracking'] div[role='button']",
-        ]
+    async def _locate_follow_button(self, tab, handle):
+        normalized = (handle or "").strip().lower()
+        if normalized.startswith("@"):
+            normalized = normalized[1:]
+        target_tokens = {f"@{normalized}"}
 
-        for selector in selectors:
+        if not normalized:
+            return None
+
+        def _css_escape(value: str) -> str:
+            return value.replace("\\", "\\\\").replace('"', '\\"')
+
+        try:
+            html = await tab.get_content()
+        except Exception:
+            return None
+
+        soup = BeautifulSoup(html, "html.parser")
+        candidates = soup.select(
+            "button[data-testid$='-follow'], div[data-testid$='-follow'][role='button']"
+        )
+
+        for candidate in candidates:
+            aria_label = (candidate.get("aria-label") or "").lower()
+            text = candidate.get_text(strip=True).lower()
+
+            if not any(token in aria_label or token in text for token in target_tokens):
+                continue
+
+            selector = None
+            data_testid = candidate.get("data-testid")
+            if candidate.name == "button" and data_testid:
+                selector = f"button[data-testid='{data_testid}']"
+            elif candidate.name == "div" and data_testid:
+                selector = f"div[data-testid='{data_testid}'][role='button']"
+            elif aria_label:
+                selector = f'{candidate.name}[aria-label="{_css_escape(aria_label)}"]'
+
+            if not selector:
+                continue
+
             try:
                 return await tab.select(selector, timeout=3)
             except Exception:
                 continue
 
-        try:
-            return await tab.find("Follow", best_match=True, timeout=3)
-        except Exception:
-            return None
+        return None
 
     async def _is_already_following(self, tab):
         selectors = [
