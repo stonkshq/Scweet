@@ -100,6 +100,18 @@ verified = scweet.get_verified_followers(handle=handle, login=True, stay_logged_
 
 ---
 
+### ➕ `follow_user()` – Follow Accounts Programmatically
+
+Automate following an account from your authenticated session. The helper returns a status dictionary so you can check whether the follow is now active, pending approval, or if the target handle was unavailable.
+
+```python
+result = scweet.follow_user(handle="XDevelopers", login=True, stay_logged_in=True)
+print(result)
+# {'handle': 'XDevelopers', 'followed': True, 'status': 'now_following'}
+```
+
+---
+
 ## 🛠️ Class Initialization & Configuration
 
 Customize Scweet’s behavior during setup:

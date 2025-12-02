@@ -24,34 +24,50 @@ from bs4 import BeautifulSoup
 from pyvirtualdisplay import Display
 
 from .const import get_username, get_password, get_email, get_email_password
-from .utils import (check_element_if_exists_by_text, check_element_if_exists_by_css,
-                    get_code_from_email, extract_count_from_aria_label)
+from .utils import (
+    check_element_if_exists_by_text,
+    check_element_if_exists_by_css,
+    get_code_from_email,
+    extract_count_from_aria_label,
+)
 
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-logging.getLogger('seleniumwire').setLevel(logging.ERROR)
-logging.getLogger('selenium').setLevel(logging.ERROR)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(message)s')
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("seleniumwire").setLevel(logging.ERROR)
+logging.getLogger("selenium").setLevel(logging.ERROR)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(message)s")
 
 # display = Display(visible=0, size=(1024, 768))
 
 
 def parse_followers(text):
-    text = text.split(' ')[0]
-    if 'K' in text:
-        followers = int(float(text.replace('K', '')) * 1000)
-    elif 'M' in text:
-        followers = int(float(text.replace('M', '')) * 1000000)
+    text = text.split(" ")[0]
+    if "K" in text:
+        followers = int(float(text.replace("K", "")) * 1000)
+    elif "M" in text:
+        followers = int(float(text.replace("M", "")) * 1000000)
     else:
-        text = text.replace(',', '')
+        text = text.replace(",", "")
         followers = int(text)
     return followers
 
 
 class Scweet:
     main_tab: uc.Tab
-    def __init__(self, proxy=None, cookies=None, cookies_path=None, user_agent=None,
-                 disable_images=False, env_path=None, n_splits=5, concurrency=5, headless=True, scroll_ratio=30,
-                 code_callback: Optional[Callable[[str, str], Awaitable[str]]] = None):
+
+    def __init__(
+        self,
+        proxy=None,
+        cookies=None,
+        cookies_path=None,
+        user_agent=None,
+        disable_images=False,
+        env_path=None,
+        n_splits=5,
+        concurrency=5,
+        headless=True,
+        scroll_ratio=30,
+        code_callback: Optional[Callable[[str, str], Awaitable[str]]] = None,
+    ):
         self.driver = None
         self.proxy = proxy
         self.cookies = cookies
@@ -84,18 +100,20 @@ class Scweet:
 
         if self.proxy:
             logging.info(f"setting proxy : {self.proxy['host']}:{self.proxy['port']}")
-            config.add_argument(f"--proxy-server={self.proxy['host']}:{self.proxy['port']}")
+            config.add_argument(
+                f"--proxy-server={self.proxy['host']}:{self.proxy['port']}"
+            )
         if self.user_agent:
-            config.add_argument(f'--user-agent={self.user_agent}')
+            config.add_argument(f"--user-agent={self.user_agent}")
         if self.disable_images:
-            config.add_argument(f'--blink-settings=imagesEnabled=false')
+            config.add_argument(f"--blink-settings=imagesEnabled=false")
         self.driver = await uc.start(config)
         self.main_tab = await self.driver.get("draft:,")
         if self.proxy:
             self.main_tab.add_handler(uc.cdp.fetch.RequestPaused, self.req_paused)
             self.main_tab.add_handler(
                 uc.cdp.fetch.AuthRequired, self.auth_challenge_handler
-             )
+            )
 
             await self.main_tab.send(uc.cdp.fetch.enable(handle_auth_requests=True))
             page = await self.driver.get("https://www.whatismyip.com/")
@@ -110,8 +128,8 @@ class Scweet:
                     request_id=event.request_id,
                     auth_challenge_response=uc.cdp.fetch.AuthChallengeResponse(
                         response="ProvideCredentials",
-                        username=self.proxy['username'],
-                        password=self.proxy['password'],
+                        username=self.proxy["username"],
+                        password=self.proxy["password"],
                     ),
                 )
             )
@@ -126,7 +144,9 @@ class Scweet:
 
     async def enter_code(self, code):
         try:
-            code_el = await self.main_tab.select("input[data-testid=ocfEnterTextTextInput]")
+            code_el = await self.main_tab.select(
+                "input[data-testid=ocfEnterTextTextInput]"
+            )
             await self.main_tab.sleep(15)
             if not code:
                 return False
@@ -151,7 +171,9 @@ class Scweet:
 
     async def enter_username(self, username):
         try:
-            username_el = await self.main_tab.select("input[data-testid=ocfEnterTextTextInput]")
+            username_el = await self.main_tab.select(
+                "input[data-testid=ocfEnterTextTextInput]"
+            )
             await username_el.send_keys(username)
             await self.main_tab.sleep(1)
             try:
@@ -172,9 +194,9 @@ class Scweet:
     async def normal_login(self, account):
         # enter username
         email_el = await self.main_tab.select("input[autocomplete=username]")
-        await email_el.send_keys(account['email_address'])
+        await email_el.send_keys(account["email_address"])
         await self.main_tab.sleep(1)
-        logging.info('Entered email')
+        logging.info("Entered email")
 
         # click next
         try:
@@ -188,26 +210,28 @@ class Scweet:
         try:
             await self.main_tab.sleep(1)
             await self.main_tab.find(
-                "Entrez votre adresse email ou votre nom d'utilisateur.")  # Enter your phone number or username
-            await self.enter_username(account['username'])
-            logging.info('entered username')
+                "Entrez votre adresse email ou votre nom d'utilisateur."
+            )  # Enter your phone number or username
+            await self.enter_username(account["username"])
+            logging.info("entered username")
         except:
             pass
 
         try:
             await self.main_tab.sleep(1)
             await self.main_tab.find(
-                "Enter your phone number or username")  # Enter your phone number or username
-            await self.enter_username(account['username'])
-            logging.info('Entered username')
+                "Enter your phone number or username"
+            )  # Enter your phone number or username
+            await self.enter_username(account["username"])
+            logging.info("Entered username")
         except:
             pass
 
         # enter password
         password_el = await self.main_tab.select("input[autocomplete=current-password]")
-        await password_el.send_keys(account['password'])
+        await password_el.send_keys(account["password"])
         await self.main_tab.sleep(2)
-        logging.info('Entered password')
+        logging.info("Entered password")
 
         # click login
         try:
@@ -222,35 +246,46 @@ class Scweet:
 
         if await self._is_logged_in():
             logging.info("Logged in successfully.")
-            self.cookies = await self.driver.cookies.get_all(requests_cookie_format=True)
+            self.cookies = await self.driver.cookies.get_all(
+                requests_cookie_format=True
+            )
             if self.cookies_path:
-                await self.driver.cookies.save(f"{self.cookies_path}/{account['username']}_cookies.dat")
+                await self.driver.cookies.save(
+                    f"{self.cookies_path}/{account['username']}_cookies.dat"
+                )
             return self.main_tab, True, "", self.cookies
 
         # wait for code to be sent if required
-        if (await check_element_if_exists_by_text(self.main_tab, "Code de confirmation") or
-                await check_element_if_exists_by_text(self.main_tab, "Confirmation code")):
+        if await check_element_if_exists_by_text(
+            self.main_tab, "Code de confirmation"
+        ) or await check_element_if_exists_by_text(self.main_tab, "Confirmation code"):
             # code = input("Enter the code you received in your email : ")
             await self.main_tab.sleep(10)
-            code = await self.code_callback(account.get('email_address'), account.get('email_password'))
+            code = await self.code_callback(
+                account.get("email_address"), account.get("email_password")
+            )
             code_status = await self.enter_code(code)
             if not code_status:
                 return self.main_tab, False, "code_not_found", None
-            logging.info('Entered Confirmation code')
+            logging.info("Entered Confirmation code")
 
-
-        if (await check_element_if_exists_by_text(self.main_tab,
-                                                 "Please verify your email address.", timeout=20) or
-                await check_element_if_exists_by_text(self.main_tab,
-                                                      'Your account has been locked.', timeout=20)):
+        if await check_element_if_exists_by_text(
+            self.main_tab, "Please verify your email address.", timeout=20
+        ) or await check_element_if_exists_by_text(
+            self.main_tab, "Your account has been locked.", timeout=20
+        ):
             return self.main_tab, False, "Account locked.", None
 
         # check if login is successful
         if await self._is_logged_in():
             logging.info("Logged in successfully.")
-            self.cookies = await self.driver.cookies.get_all(requests_cookie_format=True)
+            self.cookies = await self.driver.cookies.get_all(
+                requests_cookie_format=True
+            )
             if self.cookies_path:
-                await self.driver.cookies.save(f"{self.cookies_path}/{account['username']}_cookies.dat")
+                await self.driver.cookies.save(
+                    f"{self.cookies_path}/{account['username']}_cookies.dat"
+                )
             return self.main_tab, True, "", self.cookies
         else:
             return None, False, "Locked", None
@@ -263,16 +298,22 @@ class Scweet:
             "email_address": get_email(self.env_path),
             "password": get_password(self.env_path),
             "username": get_username(self.env_path),
-            "email_password": get_email_password(self.env_path)
+            "email_password": get_email_password(self.env_path),
         }
-        if not account.get('email_address') or not account.get('password') or not account.get('username'):
+        if (
+            not account.get("email_address")
+            or not account.get("password")
+            or not account.get("username")
+        ):
             logging.info(f"Provide twitter account credentials to login.")
             return self.main_tab, False, "Account_creds_required", None
         self.main_tab = await self.driver.get("https://x.com/login")
         await self.main_tab.sleep(2)
         if os.path.exists(f"{self.cookies_path}/{account['username']}_cookies.dat"):
             logging.info(f"Loading cookies from path {self.cookies_path} ...")
-            await self.driver.cookies.load(f"{self.cookies_path}/{account['username']}_cookies.dat")
+            await self.driver.cookies.load(
+                f"{self.cookies_path}/{account['username']}_cookies.dat"
+            )
             self.main_tab = await self.driver.get("https://x.com/login")
             await self.main_tab.sleep(3)
         elif self.cookies:
@@ -285,7 +326,9 @@ class Scweet:
             logging.info(f"Logged in successfully to {account.get('username')}")
             return self.main_tab, True, "", self.cookies
 
-        if await check_element_if_exists_by_css(self.main_tab, "input[autocomplete=username]"):
+        if await check_element_if_exists_by_css(
+            self.main_tab, "input[autocomplete=username]"
+        ):
             logging.info(f"Login in from scratch to {account.get('username')}")
             return await self.normal_login(account)
         else:
@@ -309,7 +352,7 @@ class Scweet:
                 domain=cdict["domain"],
                 path=cdict["path"],
                 expires=cdict["expires"],
-                secure=cdict["secure"]
+                secure=cdict["secure"],
             )
             self.driver.cookies.set_cookie(c)
 
@@ -320,13 +363,13 @@ class Scweet:
         if not cleaned:
             return None
         try:
-            if cleaned.endswith('Z'):
-                cleaned = cleaned[:-1] + '+00:00'
+            if cleaned.endswith("Z"):
+                cleaned = cleaned[:-1] + "+00:00"
             dt = datetime.fromisoformat(cleaned)
         except ValueError:
             # Fallback for alternate precision formats
             try:
-                dt = datetime.strptime(cleaned, '%Y-%m-%d %H:%M:%S')
+                dt = datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S")
             except ValueError:
                 return None
         if dt.tzinfo is not None:
@@ -349,9 +392,10 @@ class Scweet:
         return since_dt
 
     def _is_promoted_card(self, post_soup) -> bool:
-        promotional_markers = {'promoted', 'sponsored', 'advertisement'}
+        promotional_markers = {"promoted", "sponsored", "advertisement"}
         text_matches = post_soup.find_all(
-            string=lambda t: t and any(marker in t.lower() for marker in promotional_markers)
+            string=lambda t: t
+            and any(marker in t.lower() for marker in promotional_markers)
         )
         if text_matches:
             return True
@@ -364,29 +408,33 @@ class Scweet:
             return None
 
         # username
-        username_tag = post_soup.find('span')
+        username_tag = post_soup.find("span")
         username = username_tag.get_text(strip=True) if username_tag else ""
 
         # handle: a span with '@'
-        handle_tag = post_soup.find('span', text=lambda t: t and '@' in t)
+        handle_tag = post_soup.find("span", text=lambda t: t and "@" in t)
         handle = handle_tag.get_text(strip=True) if handle_tag else ""
 
         # postdate: <time datetime="...">
-        time_tag = post_soup.find('time')
-        postdate = time_tag['datetime'] if time_tag and time_tag.has_attr('datetime') else ""
+        time_tag = post_soup.find("time")
+        postdate = (
+            time_tag["datetime"] if time_tag and time_tag.has_attr("datetime") else ""
+        )
 
         # Full tweet text from div[data-testid=tweetText]
         tweet_text_div = post_soup.select_one('div[data-testid="tweetText"]')
         text = tweet_text_div.get_text(strip=True) if tweet_text_div else ""
 
         # embedded text (as previously handled)
-        embedded_div = post_soup.select_one('div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)')
+        embedded_div = post_soup.select_one(
+            "div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)"
+        )
         embedded = embedded_div.get_text(strip=True) if embedded_div else ""
 
         # Counts from aria-label
-        reply_div = post_soup.find('button', {'data-testid': 'reply'})
-        retweet_div = post_soup.find('button', {'data-testid': 'retweet'})
-        like_div = post_soup.find('button', {'data-testid': 'like'})
+        reply_div = post_soup.find("button", {"data-testid": "reply"})
+        retweet_div = post_soup.find("button", {"data-testid": "retweet"})
+        like_div = post_soup.find("button", {"data-testid": "like"})
 
         reply_cnt = extract_count_from_aria_label(reply_div)
         retweet_cnt = extract_count_from_aria_label(retweet_div)
@@ -394,18 +442,18 @@ class Scweet:
 
         # image links
         image_links = []
-        image_tags = post_soup.select('div:nth-of-type(2) > div:nth-of-type(2) img')
+        image_tags = post_soup.select("div:nth-of-type(2) > div:nth-of-type(2) img")
         for img in image_tags:
-            src = img.get('src', '')
-            if 'https://pbs.twimg.com/' in src:
+            src = img.get("src", "")
+            if "https://pbs.twimg.com/" in src:
                 image_links.append(src)
 
         # Emojis
-        emoji_tags = post_soup.find_all('img', src=lambda s: s and 'emoji' in s)
+        emoji_tags = post_soup.find_all("img", src=lambda s: s and "emoji" in s)
         emoji_list = []
         for tag in emoji_tags:
-            filename = tag.get('src', '')
-            match = re.search(r'svg/([a-z0-9]+)\.svg', filename)
+            filename = tag.get("src", "")
+            match = re.search(r"svg/([a-z0-9]+)\.svg", filename)
             if match:
                 try:
                     emoji_cp = int(match.group(1), 16)
@@ -413,11 +461,11 @@ class Scweet:
                     emoji_list.append(emoji)
                 except ValueError:
                     continue
-        emojis = ' '.join(emoji_list)
+        emojis = " ".join(emoji_list)
 
         # tweet URL: <a href="/.../status/...">
-        url_tag = post_soup.find('a', href=lambda h: h and '/status/' in h)
-        tweet_url = url_tag['href'] if url_tag else ""
+        url_tag = post_soup.find("a", href=lambda h: h and "/status/" in h)
+        tweet_url = url_tag["href"] if url_tag else ""
 
         tweet = {
             "username": username,
@@ -430,7 +478,7 @@ class Scweet:
             "retweet_cnt": retweet_cnt,
             "like_cnt": like_cnt,
             "image_links": image_links,
-            "tweet_url": tweet_url
+            "tweet_url": tweet_url,
         }
 
         return tweet
@@ -447,19 +495,45 @@ class Scweet:
     def get_verified_followers(self, **scrape_kwargs):
         return asyncio.run(self.aget_verified_followers(**scrape_kwargs))
 
+    def follow_user(self, handle, login=True, stay_logged_in=True, sleep=2):
+        return asyncio.run(
+            self.afollow_user(
+                handle=handle, login=login, stay_logged_in=stay_logged_in, sleep=sleep
+            )
+        )
+
     async def aget_followers(self, handle, login=True, stay_logged_in=True, sleep=2):
-        return await self.aget_follows(handle=handle, type="followers",
-                                       login=login, stay_logged_in=stay_logged_in, sleep=sleep)
+        return await self.aget_follows(
+            handle=handle,
+            type="followers",
+            login=login,
+            stay_logged_in=stay_logged_in,
+            sleep=sleep,
+        )
 
     async def aget_following(self, handle, login=True, stay_logged_in=True, sleep=2):
-        return await self.aget_follows(handle=handle, type="following",
-                                       login=login, stay_logged_in=stay_logged_in, sleep=sleep)
+        return await self.aget_follows(
+            handle=handle,
+            type="following",
+            login=login,
+            stay_logged_in=stay_logged_in,
+            sleep=sleep,
+        )
 
-    async def aget_verified_followers(self, handle, login=True, stay_logged_in=True, sleep=2):
-        return await self.aget_follows(handle=handle, type="verified_followers",
-                                       login=login, stay_logged_in=stay_logged_in, sleep=sleep)
+    async def aget_verified_followers(
+        self, handle, login=True, stay_logged_in=True, sleep=2
+    ):
+        return await self.aget_follows(
+            handle=handle,
+            type="verified_followers",
+            login=login,
+            stay_logged_in=stay_logged_in,
+            sleep=sleep,
+        )
 
-    async def aget_follows(self, handle, type="following", login=True, stay_logged_in=True, sleep=2):
+    async def aget_follows(
+        self, handle, type="following", login=True, stay_logged_in=True, sleep=2
+    ):
         assert type in ["followers", "verified_followers", "following"]
         if self.suspended:
             logging.info(f"Account suspended. Use another one.")
@@ -481,17 +555,17 @@ class Scweet:
             await tab.sleep(sleep)
             # count the number of li elements if they keep increase
             html_el = await tab.get_content()
-            if 'Your account is suspended' in html_el:
+            if "Your account is suspended" in html_el:
                 logging.info(f"Account suspended. Use another one.")
                 self.suspended = True
                 if not stay_logged_in:
                     await self.close()
                 return list(follow_ids)
-            soup = BeautifulSoup(html_el, 'html.parser')
+            soup = BeautifulSoup(html_el, "html.parser")
             page_cards = soup.select('button[data-testid*="UserCell"]')
             for card in page_cards:
-                card_text = card.get_text(separator=' ', strip=True)
-                match = re.search(r'(@\w+)', card_text)
+                card_text = card.get_text(separator=" ", strip=True)
+                match = re.search(r"(@\w+)", card_text)
                 if match:
                     username = match.group(1)
                     if username not in follow_ids:
@@ -506,10 +580,166 @@ class Scweet:
             await self.close()
         return list(follow_ids)
 
+    async def afollow_user(self, handle, login=True, stay_logged_in=True, sleep=2):
+        outcome = {"handle": handle, "followed": False, "status": "not_attempted"}
 
+        if self.suspended:
+            outcome["status"] = "auth_account_suspended"
+            return outcome
 
-    async def consume_html(self, html_queue, index, all_posts_data, since_dt: Optional[datetime] = None,
-                           stop_event: Optional[asyncio.Event] = None, persist: bool = True):
+        if not self.driver:
+            await self.init_nodriver()
+
+        if login:
+            _, logged_in, reason, _ = await self.login()
+            if not logged_in:
+                outcome["status"] = f"login_failed:{reason}"
+                return outcome
+
+        tab = None
+        try:
+            tab = await self.driver.get(f"https://x.com/{handle}", new_tab=True)
+            await tab.sleep(sleep)
+
+            profile_state = await self._detect_profile_state(tab)
+            if profile_state != "ok":
+                outcome["status"] = profile_state
+                return outcome
+
+            if await self._is_already_following(tab):
+                outcome.update({"followed": True, "status": "already_following"})
+                return outcome
+
+            follow_button = await self._locate_follow_button(tab)
+            if not follow_button:
+                outcome["status"] = "follow_cta_not_found"
+                return outcome
+
+            await follow_button.click()
+            await tab.sleep(2)
+            await self._handle_follow_confirmation(tab)
+            await tab.sleep(1)
+
+            if await self._is_already_following(tab):
+                outcome.update({"followed": True, "status": "now_following"})
+            elif await self._is_follow_request_pending(tab):
+                outcome["status"] = "pending_approval"
+            else:
+                outcome["status"] = "follow_action_not_confirmed"
+
+            return outcome
+        finally:
+            if tab:
+                await tab.close()
+            if not stay_logged_in:
+                await self.close()
+
+    async def _locate_follow_button(self, tab):
+        selectors = [
+            "button[data-testid$='-follow']",
+            "div[data-testid$='-follow'][role='button']",
+            "div[data-testid='placementTracking'] div[data-testid$='-follow']",
+            "div[data-testid='placementTracking'] div[role='button']",
+        ]
+
+        for selector in selectors:
+            try:
+                return await tab.select(selector, timeout=3)
+            except Exception:
+                continue
+
+        try:
+            return await tab.find("Follow", best_match=True, timeout=3)
+        except Exception:
+            return None
+
+    async def _is_already_following(self, tab):
+        selectors = [
+            "button[data-testid$='-unfollow']",
+            "div[data-testid$='-unfollow']",
+        ]
+
+        for selector in selectors:
+            try:
+                await tab.select(selector, timeout=2)
+                return True
+            except Exception:
+                continue
+
+        try:
+            await tab.find("Following", best_match=True, timeout=2)
+            return True
+        except Exception:
+            return False
+
+    async def _is_follow_request_pending(self, tab):
+        selectors = ["button[data-testid$='-cancel']", "div[data-testid$='-cancel']"]
+
+        for selector in selectors:
+            try:
+                await tab.select(selector, timeout=2)
+                return True
+            except Exception:
+                continue
+
+        try:
+            await tab.find("Pending", best_match=True, timeout=2)
+            return True
+        except Exception:
+            return False
+
+    async def _handle_follow_confirmation(self, tab):
+        selectors = [
+            "div[data-testid='confirmationSheetConfirm']",
+            "button[data-testid='confirmationSheetConfirm']",
+            "div[data-testid='confirmationSheetConfirm'] div[role='button']",
+        ]
+
+        for selector in selectors:
+            try:
+                confirm = await tab.select(selector, timeout=2)
+                await confirm.click()
+                await tab.sleep(1)
+                return True
+            except Exception:
+                continue
+
+        for label in ["Follow", "Yes"]:
+            try:
+                confirm = await tab.find(label, best_match=True, timeout=2)
+                await confirm.click()
+                await tab.sleep(1)
+                return True
+            except Exception:
+                continue
+
+        return False
+
+    async def _detect_profile_state(self, tab):
+        html = await tab.get_content()
+        lowered = html.lower()
+
+        if (
+            "this account doesn’t exist" in lowered
+            or "this account doesn't exist" in lowered
+        ):
+            return "not_found"
+        if "account suspended" in lowered:
+            return "target_suspended"
+        if "these tweets are protected" in lowered:
+            return "protected"
+
+        return "ok"
+
+    async def consume_html(
+        self,
+        html_queue,
+        index,
+        all_posts_data,
+        since_dt: Optional[datetime] = None,
+        stop_event: Optional[asyncio.Event] = None,
+        persist: bool = True,
+    ):
         """
         This coroutine runs concurrently with the main fetch loop.
         It consumes HTML from the queue and updates all_posts_data.
@@ -522,25 +752,32 @@ class Scweet:
                 all_posts_data,
                 since_dt=since_dt,
                 stop_event=stop_event,
-                persist=persist
+                persist=persist,
             )
             html_queue.task_done()
 
-    async def aget_data(self, html_content, index, all_posts_data, since_dt: Optional[datetime] = None,
-                        stop_event: Optional[asyncio.Event] = None, persist: bool = True):
+    async def aget_data(
+        self,
+        html_content,
+        index,
+        all_posts_data,
+        since_dt: Optional[datetime] = None,
+        stop_event: Optional[asyncio.Event] = None,
+        persist: bool = True,
+    ):
         data_file_name = f"data_{index}.json"
-        soup = BeautifulSoup(html_content, 'html.parser')
-        posts = soup.select('article[data-testid=tweet]')
+        soup = BeautifulSoup(html_content, "html.parser")
+        posts = soup.select("article[data-testid=tweet]")
         for post_soup in posts:
             data = await self.get_data(post_soup)
             if data:
                 # Use the tweet_url as key
-                tweet_id = data['tweet_url'].split("/")[-1]
+                tweet_id = data["tweet_url"].split("/")[-1]
                 if not tweet_id:
                     continue
 
                 if since_dt is not None:
-                    post_dt = self._parse_datetime(data.get('postdate'))
+                    post_dt = self._parse_datetime(data.get("postdate"))
                     if not post_dt:
                         continue
                     if post_dt < since_dt:
@@ -559,18 +796,20 @@ class Scweet:
     async def fetch_tweets(self, url, index, limit):
         tab = await self.driver.get(url, new_tab=True)
         if await check_element_if_exists_by_text(tab, "Retry"):
-            retry = await tab.find('Retry')
+            retry = await tab.find("Retry")
             await retry.click()
             await tab.sleep(3)
 
-        await tab.scroll_down(self.scroll_ratio//2)
+        await tab.scroll_down(self.scroll_ratio // 2)
         await tab.sleep(2)
 
         num_scrolls = 0
         all_posts_data = {}
         last_len = 0
         html_queue = asyncio.Queue()
-        consumer_task = asyncio.create_task(self.consume_html(html_queue, index, all_posts_data))
+        consumer_task = asyncio.create_task(
+            self.consume_html(html_queue, index, all_posts_data)
+        )
 
         while True:
             await tab.activate()
@@ -581,16 +820,18 @@ class Scweet:
             await html_queue.put(html_el)
             num_scrolls += 1
 
-            if await check_element_if_exists_by_text(tab, "Something went wrong. Try reloading."):
+            if await check_element_if_exists_by_text(
+                tab, "Something went wrong. Try reloading."
+            ):
                 logging.info(f"Something went wrong (rate limit) for tab index {index}")
                 break
-            elif num_scrolls%5 == 0:
+            elif num_scrolls % 5 == 0:
                 current_len = len(all_posts_data)
                 if current_len == last_len:
                     logging.info(f"No more tweets for tab index {index}")
                     break
                 last_len = current_len
-            elif len(all_posts_data)>limit:
+            elif len(all_posts_data) > limit:
                 logging.info("Reached desired tweets count.")
                 break
 
@@ -625,7 +866,7 @@ class Scweet:
                 all_posts_data=all_posts_data,
                 since_dt=since_dt,
                 stop_event=stop_event,
-                persist=False
+                persist=False,
             )
         )
 
@@ -655,7 +896,9 @@ class Scweet:
                     break
 
                 if stale_rounds >= 3:
-                    logging.info("No new tweets detected in home feed after multiple scrolls; stopping.")
+                    logging.info(
+                        "No new tweets detected in home feed after multiple scrolls; stopping."
+                    )
                     break
 
                 await tab.scroll_down(self.scroll_ratio)
@@ -691,27 +934,27 @@ class Scweet:
         return asyncio.run(self.ascrape_feed(**scrape_kwargs))
 
     async def ascrape(
-            self,
-            since: str,
-            until: str = None,
-            words: Union[str, list] = None,
-            to_account: str = None,
-            from_account: str = None,
-            mention_account: str = None,
-            lang: str = None,
-            limit: float = float("inf"),
-            display_type: str = "Top",
-            resume: bool = False,
-            hashtag: str = None,
-            save_dir: str = "outputs",
-            filter_replies: bool = False,
-            proximity: bool = False,
-            geocode: str = None,
-            minreplies=None,
-            minlikes=None,
-            minretweets=None,
-            custom_csv_name=None,
-            save_csv: bool = True
+        self,
+        since: str,
+        until: str = None,
+        words: Union[str, list] = None,
+        to_account: str = None,
+        from_account: str = None,
+        mention_account: str = None,
+        lang: str = None,
+        limit: float = float("inf"),
+        display_type: str = "Top",
+        resume: bool = False,
+        hashtag: str = None,
+        save_dir: str = "outputs",
+        filter_replies: bool = False,
+        proximity: bool = False,
+        geocode: str = None,
+        minreplies=None,
+        minlikes=None,
+        minretweets=None,
+        custom_csv_name=None,
+        save_csv: bool = True,
     ):
         """
         Scrape tweets between [since, until] using concurrency, optionally writing incrementally to CSV.
@@ -742,7 +985,7 @@ class Scweet:
                 os.makedirs(save_dir)
 
             if words:
-                fname_part = '_'.join(words)
+                fname_part = "_".join(words)
             elif from_account:
                 fname_part = from_account
             elif to_account:
@@ -755,32 +998,55 @@ class Scweet:
                 fname_part = "tweets"
 
             if not custom_csv_name:
-                csv_filename = os.path.join(save_dir, f"{fname_part}_{since}_{until}.csv")
+                csv_filename = os.path.join(
+                    save_dir, f"{fname_part}_{since}_{until}.csv"
+                )
             else:
-                csv_filename = custom_csv_name if os.path.isabs(custom_csv_name) else os.path.join(save_dir, custom_csv_name)
+                csv_filename = (
+                    custom_csv_name
+                    if os.path.isabs(custom_csv_name)
+                    else os.path.join(save_dir, custom_csv_name)
+                )
 
             if resume and os.path.exists(csv_filename):
                 last_date_str = self.get_last_date_from_csv(csv_filename)
                 if last_date_str:
                     try:
-                        last_date_dt = datetime.fromisoformat(last_date_str.replace('Z', ''))
+                        last_date_dt = datetime.fromisoformat(
+                            last_date_str.replace("Z", "")
+                        )
                         user_since_dt = datetime.strptime(since, "%Y-%m-%d")
 
                         if last_date_dt.date() >= user_since_dt.date():
                             new_since_str = last_date_dt.strftime("%Y-%m-%d")
-                            logging.info(f"[resume=True] Overriding since={since} -> {new_since_str}")
+                            logging.info(
+                                f"[resume=True] Overriding since={since} -> {new_since_str}"
+                            )
                             since = new_since_str
                     except Exception as e:
                         logging.info(f"Could not parse last date from CSV: {e}")
 
-            write_mode = "a" if (resume and csv_filename and os.path.exists(csv_filename)) else "w"
+            write_mode = (
+                "a"
+                if (resume and csv_filename and os.path.exists(csv_filename))
+                else "w"
+            )
 
         # 2) Prepare the CSV header
         # -----------------------------------------
         header = [
-            "tweetId", "UserScreenName", "UserName", "Timestamp", "Text",
-            "Embedded_text", "Emojis", "Comments", "Likes",
-            "Retweets", "Image link", "Tweet URL"
+            "tweetId",
+            "UserScreenName",
+            "UserName",
+            "Timestamp",
+            "Text",
+            "Embedded_text",
+            "Emojis",
+            "Comments",
+            "Likes",
+            "Retweets",
+            "Image link",
+            "Tweet URL",
         ]
 
         # 3) Build all URLs (using your own build_search_url)
@@ -801,7 +1067,7 @@ class Scweet:
             minreplies=minreplies,
             minlikes=minlikes,
             minretweets=minretweets,
-            n=self.n_splits
+            n=self.n_splits,
         )
 
         logging.info(f"{len(urls)} urls generated")
@@ -828,10 +1094,12 @@ class Scweet:
             # 7) Concurrency loop: fetch each chunk
             # -----------------------------------------
             for i in range(0, len(urls), self.concurrency):
-                chunk = urls[i: i + self.concurrency]
+                chunk = urls[i : i + self.concurrency]
                 logging.info(f"Processing chunk with {len(chunk)} urls")
                 tasks = [
-                    asyncio.create_task(self.fetch_tweets(url, index=i + j, limit=limit))
+                    asyncio.create_task(
+                        self.fetch_tweets(url, index=i + j, limit=limit)
+                    )
                     for j, url in enumerate(chunk)
                 ]
                 results_list = await asyncio.gather(*tasks)
@@ -852,14 +1120,16 @@ class Scweet:
                             tweet_data.get("like_cnt", "0"),
                             tweet_data.get("retweet_cnt", "0"),
                             " ".join(tweet_data.get("image_links", [])),
-                            tweet_data.get("tweet_url", "")
+                            tweet_data.get("tweet_url", ""),
                         ]
                         if writer:
                             writer.writerow(row)
                         total_tweets += 1
 
                         if total_tweets >= limit:
-                            logging.info(f"Reached limit of {limit} tweets. Stopping early.")
+                            logging.info(
+                                f"Reached limit of {limit} tweets. Stopping early."
+                            )
                             break
                     if total_tweets >= limit:
                         break
@@ -869,12 +1139,18 @@ class Scweet:
             # 8) Done scraping
             # -----------------------------------------
             if writer:
-                logging.info(f"Scraping completed. Total tweets written: {total_tweets}")
+                logging.info(
+                    f"Scraping completed. Total tweets written: {total_tweets}"
+                )
             else:
-                logging.info(f"Scraping completed. Total tweets collected: {total_tweets}")
+                logging.info(
+                    f"Scraping completed. Total tweets collected: {total_tweets}"
+                )
 
             # Cancel any lingering tasks before shutting down.
-            pending_tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            pending_tasks = [
+                t for t in asyncio.all_tasks() if t is not asyncio.current_task()
+            ]
             for task in pending_tasks:
                 task.cancel()
             await asyncio.gather(*pending_tasks, return_exceptions=True)
@@ -888,12 +1164,12 @@ class Scweet:
         return all_data
 
     async def ascrape_feed(
-            self,
-            since: Union[str, datetime],
-            limit: float = float("inf"),
-            save_dir: str = "outputs",
-            custom_csv_name: Optional[str] = None,
-            save_csv: bool = True
+        self,
+        since: Union[str, datetime],
+        limit: float = float("inf"),
+        save_dir: str = "outputs",
+        custom_csv_name: Optional[str] = None,
+        save_csv: bool = True,
     ):
         """Scrape the authenticated home timeline using X's live/latest view.
 
@@ -918,16 +1194,28 @@ class Scweet:
 
             if not custom_csv_name:
                 csv_filename = os.path.join(
-                    save_dir,
-                    f"feed_{since_dt.strftime('%Y%m%dT%H%M%S')}.csv"
+                    save_dir, f"feed_{since_dt.strftime('%Y%m%dT%H%M%S')}.csv"
                 )
             else:
-                csv_filename = custom_csv_name if os.path.isabs(custom_csv_name) else os.path.join(save_dir, custom_csv_name)
+                csv_filename = (
+                    custom_csv_name
+                    if os.path.isabs(custom_csv_name)
+                    else os.path.join(save_dir, custom_csv_name)
+                )
 
         header = [
-            "tweetId", "UserScreenName", "UserName", "Timestamp", "Text",
-            "Embedded_text", "Emojis", "Comments", "Likes",
-            "Retweets", "Image link", "Tweet URL"
+            "tweetId",
+            "UserScreenName",
+            "UserName",
+            "Timestamp",
+            "Text",
+            "Embedded_text",
+            "Emojis",
+            "Comments",
+            "Likes",
+            "Retweets",
+            "Image link",
+            "Tweet URL",
         ]
 
         _, logged_in, reason, _ = await self.login()
@@ -947,20 +1235,22 @@ class Scweet:
 
             for tweet_id, tweet_data in feed_data.items():
                 if writer:
-                    writer.writerow([
-                        tweet_id,
-                        tweet_data.get("handle", ""),
-                        tweet_data.get("username", ""),
-                        tweet_data.get("postdate", ""),
-                        tweet_data.get("text", ""),
-                        tweet_data.get("embedded", ""),
-                        tweet_data.get("emojis", ""),
-                        tweet_data.get("reply_cnt", "0"),
-                        tweet_data.get("like_cnt", "0"),
-                        tweet_data.get("retweet_cnt", "0"),
-                        " ".join(tweet_data.get("image_links", [])),
-                        tweet_data.get("tweet_url", "")
-                    ])
+                    writer.writerow(
+                        [
+                            tweet_id,
+                            tweet_data.get("handle", ""),
+                            tweet_data.get("username", ""),
+                            tweet_data.get("postdate", ""),
+                            tweet_data.get("text", ""),
+                            tweet_data.get("embedded", ""),
+                            tweet_data.get("emojis", ""),
+                            tweet_data.get("reply_cnt", "0"),
+                            tweet_data.get("like_cnt", "0"),
+                            tweet_data.get("retweet_cnt", "0"),
+                            " ".join(tweet_data.get("image_links", [])),
+                            tweet_data.get("tweet_url", ""),
+                        ]
+                    )
         finally:
             if csv_file:
                 csv_file.close()
@@ -997,7 +1287,7 @@ class Scweet:
                     # For example, if you store it as 2025-01-21T18:34:59.000Z:
                     try:
                         # remove trailing 'Z' to parse with fromisoformat in Python 3.11+
-                        dt = datetime.fromisoformat(timestamp_str.replace('Z', ''))
+                        dt = datetime.fromisoformat(timestamp_str.replace("Z", ""))
                     except:
                         # fallback formats, or skip
                         dt = None
@@ -1008,28 +1298,28 @@ class Scweet:
             return None
 
         if max_dt:
-            return max_dt.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            return max_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         return None
 
-    def build_search_url(self,
-                         since: str,
-                         until: str,
-                         lang: str = None,
-                         display_type: str = "Top",
-                         words: Union[str, list] = None,
-                         to_account: str = None,
-                         from_account: str = None,
-                         mention_account: str = None,
-                         hashtag: str = None,
-                         filter_replies: bool = False,
-                         proximity: bool = False,
-                         geocode: str = None,
-                         minreplies: int = None,
-                         minlikes: int = None,
-                         minretweets: int = None,
-                         n: int = 10
-                         ) -> List[str]:
-
+    def build_search_url(
+        self,
+        since: str,
+        until: str,
+        lang: str = None,
+        display_type: str = "Top",
+        words: Union[str, list] = None,
+        to_account: str = None,
+        from_account: str = None,
+        mention_account: str = None,
+        hashtag: str = None,
+        filter_replies: bool = False,
+        proximity: bool = False,
+        geocode: str = None,
+        minreplies: int = None,
+        minlikes: int = None,
+        minretweets: int = None,
+        n: int = 10,
+    ) -> List[str]:
         display_type_allowed = {"Top", "Recent", "latest", "image"}
         if display_type not in display_type_allowed:
             raise ValueError(f"display_type must be one of {display_type_allowed}")
@@ -1093,9 +1383,13 @@ class Scweet:
         geocode_str = f"%20geocode%3A{geocode}" if geocode else ""
 
         # min number of replies, likes, retweets
-        minreplies_str = f"%20min_replies%3A{minreplies}" if minreplies is not None else ""
+        minreplies_str = (
+            f"%20min_replies%3A{minreplies}" if minreplies is not None else ""
+        )
         minlikes_str = f"%20min_faves%3A{minlikes}" if minlikes is not None else ""
-        minretweets_str = f"%20min_retweets%3A{minretweets}" if minretweets is not None else ""
+        minretweets_str = (
+            f"%20min_retweets%3A{minretweets}" if minretweets is not None else ""
+        )
 
         # Build intervals
         urls = []
@@ -1112,23 +1406,23 @@ class Scweet:
 
             # Build final path
             path = (
-                    "https://x.com/search?q="
-                    + words_str
-                    + from_str
-                    + to_str
-                    + mention_str
-                    + hashtag_str
-                    + until_part
-                    + since_part
-                    + lang_str
-                    + filter_replies_str
-                    + geocode_str
-                    + minreplies_str
-                    + minlikes_str
-                    + minretweets_str
-                    + "&src=typed_query"
-                    + display_type_str
-                    + proximity_str
+                "https://x.com/search?q="
+                + words_str
+                + from_str
+                + to_str
+                + mention_str
+                + hashtag_str
+                + until_part
+                + since_part
+                + lang_str
+                + filter_replies_str
+                + geocode_str
+                + minreplies_str
+                + minlikes_str
+                + minretweets_str
+                + "&src=typed_query"
+                + display_type_str
+                + proximity_str
             )
 
             urls.append(path)
@@ -1158,7 +1452,7 @@ class Scweet:
           - join_date
           - description
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
 
         # Extract following using the element that shows following count.
         try:
@@ -1173,7 +1467,9 @@ class Scweet:
         # Extract verified followers from the corresponding element.
         try:
             verified_elem = soup.select_one('a[href*="/verified_followers"] span span')
-            verified_followers = verified_elem.get_text(strip=True) if verified_elem else None
+            verified_followers = (
+                verified_elem.get_text(strip=True) if verified_elem else None
+            )
             if verified_followers:
                 verified_followers = parse_followers(verified_followers)
         except Exception:
@@ -1222,7 +1518,7 @@ class Scweet:
             "location": location,
             "website": website,
             "join_date": join_date,
-            "description": desc
+            "description": desc,
         }
         all_infos[handle] = profile
         return all_infos
@@ -1231,7 +1527,9 @@ class Scweet:
         tab = await self.driver.get("https://x.com", new_tab=True)
         all_infos = {}
         profiles_queue = asyncio.Queue()
-        consumer_task = asyncio.create_task(self.consume_profile(profiles_queue, all_infos))
+        consumer_task = asyncio.create_task(
+            self.consume_profile(profiles_queue, all_infos)
+        )
         for handle in handles_chunk:
             try:
                 await tab.activate()
@@ -1262,14 +1560,14 @@ class Scweet:
             await self.init_nodriver()
 
         if login:
-            _, logged_in, reason, _= await self.login()
+            _, logged_in, reason, _ = await self.login()
             if not logged_in:
                 return {}
         chunk_size = math.ceil(len(handles) / self.concurrency)
         tasks = []
 
         for i in range(0, len(handles), chunk_size):
-            chunk = handles[i: i + chunk_size]
+            chunk = handles[i : i + chunk_size]
             tasks.append(asyncio.create_task(self.process_handles_chunk(chunk)))
 
         results_list = await asyncio.gather(*tasks)
@@ -1279,7 +1577,9 @@ class Scweet:
             consolidated_results.update(result)
 
         # Cancel any lingering tasks before shutting down.
-        pending_tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        pending_tasks = [
+            t for t in asyncio.all_tasks() if t is not asyncio.current_task()
+        ]
         for task in pending_tasks:
             task.cancel()
         await asyncio.gather(*pending_tasks, return_exceptions=True)
@@ -1292,9 +1592,11 @@ class Scweet:
         if self.display:
             logging.info("Stopping virtual display")
             self.display.stop()
+            self.display = None
         if self.driver:
             self.driver.stop()
             self.driver = None
+        self.logged_in = False
 
     async def __aenter__(self):
         await self.init_nodriver()
@@ -1303,59 +1605,124 @@ class Scweet:
         await self.close()
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Scrape tweets.')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Scrape tweets.")
 
-    parser.add_argument('--words', type=str,
-                        help='Queries. they should be devided by "//" : Cat//Dog.', default=None)
-    parser.add_argument('--from_account', type=str,
-                        help='Tweets from this account (example : @Tesla).', default=None)
-    parser.add_argument('--to_account', type=str,
-                        help='Tweets replyed to this account (example : @Tesla).', default=None)
-    parser.add_argument('--mention_account', type=str,
-                        help='Tweets mention a account (example : @Tesla).', default=None)
-    parser.add_argument('--hashtag', type=str,
-                        help='Hashtag', default=None)
-    parser.add_argument('--until', type=str,
-                        help='Max date for search query. example : %%Y-%%m-%%d.', required=True)
-    parser.add_argument('--since', type=str,
-                        help='Start date for search query. example : %%Y-%%m-%%d.', required=True)
-    parser.add_argument('--n_splits', type=int,
-                        help='Number of splits which will be performed on the since/until interval.',
-                        default=5)
-    parser.add_argument('--lang', type=str,
-                        help='Tweets language. example : "en" for english and "fr" for french.', default=None)
-    parser.add_argument('--headless', type=bool,
-                        help='Headless webdrives or not. True or False', default=False)
-    parser.add_argument('--limit', type=int,
-                        help='Limit tweets per <interval>', default=float("inf"))
-    parser.add_argument('--display_type', type=str,
-                        help='Display type of twitter page : Latest or Top', default="Top")
-    parser.add_argument('--resume', type=bool,
-                        help='Resume the last scraping. specify the csv file path.', default=False)
-    parser.add_argument('--proxy', type=str,
-                        help='Proxy server', default=None)
-    parser.add_argument('--proximity', type=bool,
-                        help='Proximity', default=False)
-    parser.add_argument('--geocode', type=str,
-                        help='Geographical location coordinates to center the search, radius. No compatible with proximity',
-                        default=None)
-    parser.add_argument('--minreplies', type=int,
-                        help='Min. number of replies to the tweet', default=None)
-    parser.add_argument('--minlikes', type=int,
-                        help='Min. number of likes to the tweet', default=None)
-    parser.add_argument('--minretweets', type=int,
-                        help='Min. number of retweets to the tweet', default=None)
-    parser.add_argument('--cookies_path', type=str,
-                        help='Cookies path for login', default=None)
-    parser.add_argument('--user_agent', type=str,
-                        help='User agent', default=None)
-    parser.add_argument('--disable_images', type=bool,
-                        help='Display images while crawling', default=False)
-    parser.add_argument('--env_path', type=str,
-                        help='.env file holding account credentials', default=".env")
-    parser.add_argument('--concurrency', type=int,
-                        help='Number of concurrent crawling in the same n_split', default=5)
+    parser.add_argument(
+        "--words",
+        type=str,
+        help='Queries. they should be devided by "//" : Cat//Dog.',
+        default=None,
+    )
+    parser.add_argument(
+        "--from_account",
+        type=str,
+        help="Tweets from this account (example : @Tesla).",
+        default=None,
+    )
+    parser.add_argument(
+        "--to_account",
+        type=str,
+        help="Tweets replyed to this account (example : @Tesla).",
+        default=None,
+    )
+    parser.add_argument(
+        "--mention_account",
+        type=str,
+        help="Tweets mention a account (example : @Tesla).",
+        default=None,
+    )
+    parser.add_argument("--hashtag", type=str, help="Hashtag", default=None)
+    parser.add_argument(
+        "--until",
+        type=str,
+        help="Max date for search query. example : %%Y-%%m-%%d.",
+        required=True,
+    )
+    parser.add_argument(
+        "--since",
+        type=str,
+        help="Start date for search query. example : %%Y-%%m-%%d.",
+        required=True,
+    )
+    parser.add_argument(
+        "--n_splits",
+        type=int,
+        help="Number of splits which will be performed on the since/until interval.",
+        default=5,
+    )
+    parser.add_argument(
+        "--lang",
+        type=str,
+        help='Tweets language. example : "en" for english and "fr" for french.',
+        default=None,
+    )
+    parser.add_argument(
+        "--headless",
+        type=bool,
+        help="Headless webdrives or not. True or False",
+        default=False,
+    )
+    parser.add_argument(
+        "--limit", type=int, help="Limit tweets per <interval>", default=float("inf")
+    )
+    parser.add_argument(
+        "--display_type",
+        type=str,
+        help="Display type of twitter page : Latest or Top",
+        default="Top",
+    )
+    parser.add_argument(
+        "--resume",
+        type=bool,
+        help="Resume the last scraping. specify the csv file path.",
+        default=False,
+    )
+    parser.add_argument("--proxy", type=str, help="Proxy server", default=None)
+    parser.add_argument("--proximity", type=bool, help="Proximity", default=False)
+    parser.add_argument(
+        "--geocode",
+        type=str,
+        help="Geographical location coordinates to center the search, radius. No compatible with proximity",
+        default=None,
+    )
+    parser.add_argument(
+        "--minreplies",
+        type=int,
+        help="Min. number of replies to the tweet",
+        default=None,
+    )
+    parser.add_argument(
+        "--minlikes", type=int, help="Min. number of likes to the tweet", default=None
+    )
+    parser.add_argument(
+        "--minretweets",
+        type=int,
+        help="Min. number of retweets to the tweet",
+        default=None,
+    )
+    parser.add_argument(
+        "--cookies_path", type=str, help="Cookies path for login", default=None
+    )
+    parser.add_argument("--user_agent", type=str, help="User agent", default=None)
+    parser.add_argument(
+        "--disable_images",
+        type=bool,
+        help="Display images while crawling",
+        default=False,
+    )
+    parser.add_argument(
+        "--env_path",
+        type=str,
+        help=".env file holding account credentials",
+        default=".env",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        help="Number of concurrent crawling in the same n_split",
+        default=5,
+    )
 
     args = parser.parse_args()
 
@@ -1384,12 +1751,34 @@ if __name__ == '__main__':
     env_path = args.env_path
     concurrency = args.concurrency
 
+    scweet = Scweet(
+        None,
+        None,
+        cookies_path,
+        user_agent,
+        disable_images,
+        env_path,
+        n_splits,
+        concurrency,
+        headless,
+    )
 
-
-    scweet = Scweet(None, None, cookies_path, user_agent, disable_images, env_path, n_splits, concurrency, headless)
-
-    scweet.scrape(since=since, until=until, words=words, to_account=to_account, from_account=from_account,
-                     mention_account=mention_account,
-                     hashtag=hashtag, lang=lang, limit=limit,
-                     display_type=display_type, resume=resume, filter_replies=False, proximity=proximity,
-                     geocode=geocode, minreplies=minreplies, minlikes=minlikes, minretweets=minretweets)
+    scweet.scrape(
+        since=since,
+        until=until,
+        words=words,
+        to_account=to_account,
+        from_account=from_account,
+        mention_account=mention_account,
+        hashtag=hashtag,
+        lang=lang,
+        limit=limit,
+        display_type=display_type,
+        resume=resume,
+        filter_replies=False,
+        proximity=proximity,
+        geocode=geocode,
+        minreplies=minreplies,
+        minlikes=minlikes,
+        minretweets=minretweets,
+    )
