@@ -657,6 +657,10 @@ class Scweet:
         selectors = [
             "button[data-testid$='-unfollow']",
             "div[data-testid$='-unfollow']",
+            "button[aria-label^='Following']",
+            "div[aria-label^='Following']",
+            "button[aria-label^='Unfollow']",
+            "div[aria-label^='Unfollow']",
         ]
 
         for selector in selectors:
@@ -667,10 +671,24 @@ class Scweet:
                 continue
 
         try:
-            await tab.find("Following", best_match=True, timeout=2)
-            return True
+            html = await tab.get_content()
         except Exception:
             return False
+
+        soup = BeautifulSoup(html, "html.parser")
+        action = soup.select_one(
+            "button[data-testid$='-follow'], div[data-testid$='-follow'][role='button']"
+        )
+        if not action:
+            return False
+
+        label = " ".join(action.get_text(strip=True).split()).lower()
+        aria_label = (action.get("aria-label") or "").lower()
+
+        return any(
+            needle in label or needle in aria_label
+            for needle in ["following", "unfollow", "pending"]
+        )
 
     async def _is_follow_request_pending(self, tab):
         selectors = ["button[data-testid$='-cancel']", "div[data-testid$='-cancel']"]
