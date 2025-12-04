@@ -913,6 +913,18 @@ class Scweet:
                             old_tweet_state["streak"] = 0
                 if tweet_id not in all_posts_data:
                     all_posts_data[tweet_id] = data
+                    if index == "feed":
+                        snippet = data.get("text") or ""
+                        snippet = re.sub(r"\s+", " ", snippet).strip()
+                        if len(snippet) > 120:
+                            snippet = f"{snippet[:117]}..."
+                        logging.info(
+                            "[feed] %s by @%s at %s — %s",
+                            tweet_id,
+                            data.get("username") or "unknown",
+                            data.get("postdate") or "unknown",
+                            snippet or "<no text>",
+                        )
                     if persist:
                         # Instead of continually reading and writing data.json, we write a separate file per task:
                         with open(data_file_name, "w") as f:
