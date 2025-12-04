@@ -984,6 +984,7 @@ class Scweet:
         since_dt: datetime,
         limit: float = float("inf"),
         max_old_streak: int = 5,
+        max_empty_scrolls: int = 3,
     ):
         tab = await self.driver.get("https://x.com/home?f=live", new_tab=True)
         await tab.sleep(3)
@@ -1030,7 +1031,7 @@ class Scweet:
                     logging.info("Reached tweets older than provided 'since'.")
                     break
 
-                if stale_rounds >= 3:
+                if max_empty_scrolls and stale_rounds >= max_empty_scrolls:
                     logging.info(
                         "No new tweets detected in home feed after multiple scrolls; stopping."
                     )
@@ -1066,6 +1067,7 @@ class Scweet:
             custom_csv_name: Optional filename override for the CSV output.
             save_csv: Toggle to disable CSV writing while still returning tweet data.
             max_old_streak: Stop after this many consecutive tweets older than ``since``.
+            max_empty_scrolls: Abort when this many scrolls yield no new tweets (``0`` disables the guard).
         """
         return asyncio.run(self.ascrape_feed(**scrape_kwargs))
 
@@ -1307,6 +1309,7 @@ class Scweet:
         custom_csv_name: Optional[str] = None,
         save_csv: bool = True,
         max_old_streak: int = 5,
+        max_empty_scrolls: int = 8,
     ):
         """Scrape the authenticated home timeline using X's live/latest view.
 
@@ -1317,6 +1320,7 @@ class Scweet:
             custom_csv_name: Optional filename override; can be absolute or relative to ``save_dir``.
             save_csv: When false, skip CSV creation and only return the collected data.
             max_old_streak: Stop after encountering this many consecutive tweets older than ``since``.
+            max_empty_scrolls: Abort when this many scrolls yield no additional tweets (``0`` disables the guard).
         Returns:
             Dict mapping tweet ids to their harvested metadata.
         """
@@ -1362,7 +1366,10 @@ class Scweet:
             return {}
 
         feed_data = await self.fetch_feed(
-            since_dt=since_dt, limit=limit, max_old_streak=max_old_streak
+            since_dt=since_dt,
+            limit=limit,
+            max_old_streak=max_old_streak,
+            max_empty_scrolls=max_empty_scrolls,
         )
 
         csv_file = None
