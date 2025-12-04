@@ -849,6 +849,8 @@ class Scweet:
         since_dt: Optional[datetime] = None,
         stop_event: Optional[asyncio.Event] = None,
         persist: bool = True,
+        old_tweet_state: Optional[dict] = None,
+        max_old_streak: int = 5,
     ):
         """
         This coroutine runs concurrently with the main fetch loop.
@@ -863,6 +865,8 @@ class Scweet:
                 since_dt=since_dt,
                 stop_event=stop_event,
                 persist=persist,
+                old_tweet_state=old_tweet_state,
+                max_old_streak=max_old_streak,
             )
             html_queue.task_done()
 
@@ -874,6 +878,8 @@ class Scweet:
         since_dt: Optional[datetime] = None,
         stop_event: Optional[asyncio.Event] = None,
         persist: bool = True,
+        old_tweet_state: Optional[dict] = None,
+        max_old_streak: int = 5,
     ):
         data_file_name = f"data_{index}.json"
         soup = BeautifulSoup(html_content, "html.parser")
@@ -891,9 +897,20 @@ class Scweet:
                     if not post_dt:
                         continue
                     if post_dt < since_dt:
-                        if stop_event and not stop_event.is_set():
-                            stop_event.set()
+                        if old_tweet_state is not None:
+                            old_tweet_state["streak"] = old_tweet_state.get("streak", 0) + 1
+                            if max_old_streak and old_tweet_state["streak"] >= max_old_streak:
+                                if stop_event and not stop_event.is_set():
+                                    logging.info(
+                                        f"Encountered {old_tweet_state['streak']} older tweets consecutively; signalling stop."
+                                    )
+                                    stop_event.set()
+                        if tweet_id in all_posts_data:
+                            all_posts_data.pop(tweet_id, None)
                         continue
+                    else:
+                        if old_tweet_state is not None and old_tweet_state.get("streak"):
+                            old_tweet_state["streak"] = 0
                 if tweet_id not in all_posts_data:
                     all_posts_data[tweet_id] = data
                     if persist:
@@ -962,13 +979,19 @@ class Scweet:
 
         return all_posts_data
 
-    async def fetch_feed(self, since_dt: datetime, limit: float = float("inf")):
+    async def fetch_feed(
+        self,
+        since_dt: datetime,
+        limit: float = float("inf"),
+        max_old_streak: int = 5,
+    ):
         tab = await self.driver.get("https://x.com/home?f=live", new_tab=True)
         await tab.sleep(3)
 
         all_posts_data = {}
         html_queue = asyncio.Queue()
         stop_event = asyncio.Event()
+        old_tweet_state = {"streak": 0}
         consumer_task = asyncio.create_task(
             self.consume_html(
                 html_queue,
@@ -977,6 +1000,8 @@ class Scweet:
                 since_dt=since_dt,
                 stop_event=stop_event,
                 persist=False,
+                old_tweet_state=old_tweet_state,
+                max_old_streak=max_old_streak,
             )
         )
 
@@ -1040,6 +1065,7 @@ class Scweet:
             save_dir: Directory to persist CSV output when ``save_csv`` is true.
             custom_csv_name: Optional filename override for the CSV output.
             save_csv: Toggle to disable CSV writing while still returning tweet data.
+            max_old_streak: Stop after this many consecutive tweets older than ``since``.
         """
         return asyncio.run(self.ascrape_feed(**scrape_kwargs))
 
@@ -1280,6 +1306,7 @@ class Scweet:
         save_dir: str = "outputs",
         custom_csv_name: Optional[str] = None,
         save_csv: bool = True,
+        max_old_streak: int = 5,
     ):
         """Scrape the authenticated home timeline using X's live/latest view.
 
@@ -1289,6 +1316,7 @@ class Scweet:
             save_dir: Output directory used when persisting CSV files.
             custom_csv_name: Optional filename override; can be absolute or relative to ``save_dir``.
             save_csv: When false, skip CSV creation and only return the collected data.
+            max_old_streak: Stop after encountering this many consecutive tweets older than ``since``.
         Returns:
             Dict mapping tweet ids to their harvested metadata.
         """
@@ -1333,7 +1361,9 @@ class Scweet:
             logging.info(f"Couldn't login due to {reason}")
             return {}
 
-        feed_data = await self.fetch_feed(since_dt=since_dt, limit=limit)
+        feed_data = await self.fetch_feed(
+            since_dt=since_dt, limit=limit, max_old_streak=max_old_streak
+        )
 
         csv_file = None
         writer = None
