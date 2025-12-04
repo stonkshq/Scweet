@@ -1019,7 +1019,7 @@ class Scweet:
             else:
                 try:
                     await following_label.click()
-                    await tab.sleep(1)
+                    await tab.sleep(3)
                     following_selected = True
                 except Exception:
                     logging.info("Direct click on 'Following' tab failed; will attempt fallback selector.")
@@ -1038,7 +1038,7 @@ class Scweet:
                         pass
                     if aria_selected != "true":
                         await candidate.click()
-                        await tab.sleep(1)
+                        await tab.sleep(3)
                     following_selected = True
             except Exception:
                 pass
