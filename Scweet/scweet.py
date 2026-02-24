@@ -1015,11 +1015,21 @@ class Scweet:
         # Ensure we are looking at the "Following" timeline rather than "For you".
         following_tab = await get_following_tab(tab)
 
+        # Helper to extract CDP attribute from flat list
+        def get_cdp_attribute(element, attr_name):
+            if hasattr(element, "attributes") and isinstance(element.attributes, list):
+                try:
+                    idx = element.attributes.index(attr_name)
+                    return element.attributes[idx + 1]
+                except (ValueError, IndexError):
+                    pass
+            return None
+
         following_selected = False
         if following_tab:
             try:
-                # nodriver elements hold attributes in python attributes/properties
-                selected_attr = following_tab.attributes.get("aria-selected") if hasattr(following_tab, "attributes") else None
+                # nodriver elements hold attributes in a flat list string mapping
+                selected_attr = get_cdp_attribute(following_tab, "aria-selected")
                 if selected_attr == "true":
                     following_selected = True
                 else:
