@@ -1003,7 +1003,9 @@ class Scweet:
 
         # Ensure we are looking at the "Following" timeline rather than "For you".
         try:
-            following_label = await tab.find("Following", best_match=True)
+            following_label = await tab.select("div[role='tab'][aria-label*='Following']", timeout=3)
+            if not following_label:
+                following_label = await tab.select("a[role='tab'][aria-label*='Following']", timeout=3)
         except Exception:
             following_label = None
 
@@ -1030,6 +1032,8 @@ class Scweet:
                     "a[role='tab'][aria-label*='Following']",
                     timeout=3,
                 )
+                if not candidate:
+                    candidate = await tab.select("div[role='tab'][aria-label*='Following']", timeout=3)
                 if candidate:
                     aria_selected = None
                     try:
@@ -1045,6 +1049,34 @@ class Scweet:
 
         if not following_selected:
             logging.info("Unable to confirm 'Following' timeline; continuing with current feed view.")
+        else:
+            try:
+                # Find the 'Following' tab again to open the sorting menu
+                following_tab = None
+                try:
+                    following_tab = await tab.select("div[role='tab'][aria-label*='Following']", timeout=3)
+                    if not following_tab:
+                        following_tab = await tab.select("a[role='tab'][aria-label*='Following']", timeout=3)
+                except Exception:
+                    pass
+
+                if following_tab:
+                    await following_tab.click()
+                    await tab.sleep(1)
+
+                    # Safer approach: find all menu items and locate the 'Recent' option
+                    menu_items = await tab.select_all("div[role='menuitem']")
+                    for item in menu_items:
+                        text = getattr(item, 'text', '')
+                        if "Recent" in text:
+                            await item.click()
+                            await tab.sleep(2)
+                            logging.info("Switched to 'Recent' sorting for Following feed.")
+                            break
+                    else:
+                        logging.warning("Could not find the 'Recent' sorting option in the menu.")
+            except Exception as e:
+                logging.info(f"Failed to switch to 'Recent' sorting: {e}")
 
         all_posts_data = {}
         html_queue = asyncio.Queue()
