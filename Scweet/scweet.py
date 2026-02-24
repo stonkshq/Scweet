@@ -1018,7 +1018,8 @@ class Scweet:
         following_selected = False
         if following_tab:
             try:
-                selected_attr = await following_tab.get_attribute("aria-selected")
+                # nodriver elements hold attributes in python attributes/properties
+                selected_attr = following_tab.attributes.get("aria-selected") if hasattr(following_tab, "attributes") else None
                 if selected_attr == "true":
                     following_selected = True
                 else:
