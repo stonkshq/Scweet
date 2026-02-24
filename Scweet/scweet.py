@@ -1001,67 +1001,42 @@ class Scweet:
         tab = await self.driver.get("https://x.com/home?f=live", new_tab=True)
         await tab.sleep(3)
 
-        # Ensure we are looking at the "Following" timeline rather than "For you".
-        try:
-            following_label = await tab.select("div[role='tab'][aria-label*='Following']", timeout=3)
-            if not following_label:
-                following_label = await tab.select("a[role='tab'][aria-label*='Following']", timeout=3)
-        except Exception:
-            following_label = None
-
-        following_selected = False
-        if following_label:
+        # Helper to find the Following tab by looking at text within [role='tab'] elements
+        async def get_following_tab(tab):
             try:
-                selected_attr = await following_label.get_attribute("aria-selected")
-            except Exception:
-                selected_attr = None
-
-            if selected_attr == "true":
-                following_selected = True
-            else:
-                try:
-                    await following_label.click()
-                    await tab.sleep(3)
-                    following_selected = True
-                except Exception:
-                    logging.info("Direct click on 'Following' tab failed; will attempt fallback selector.")
-
-        if not following_selected:
-            try:
-                candidate = await tab.select(
-                    "a[role='tab'][aria-label*='Following']",
-                    timeout=3,
-                )
-                if not candidate:
-                    candidate = await tab.select("div[role='tab'][aria-label*='Following']", timeout=3)
-                if candidate:
-                    aria_selected = None
-                    try:
-                        aria_selected = await candidate.get_attribute("aria-selected")
-                    except Exception:
-                        pass
-                    if aria_selected != "true":
-                        await candidate.click()
-                        await tab.sleep(3)
-                    following_selected = True
+                tabs = await tab.select_all("[role='tab']")
+                for t in tabs:
+                    if "Following" in getattr(t, 'text', ''):
+                        return t
             except Exception:
                 pass
+            return None
+
+        # Ensure we are looking at the "Following" timeline rather than "For you".
+        following_tab = await get_following_tab(tab)
+
+        following_selected = False
+        if following_tab:
+            try:
+                selected_attr = await following_tab.get_attribute("aria-selected")
+                if selected_attr == "true":
+                    following_selected = True
+                else:
+                    await following_tab.click()
+                    await tab.sleep(3)
+                    following_selected = True
+            except Exception as e:
+                logging.info(f"Failed to check or click 'Following' tab: {e}")
 
         if not following_selected:
             logging.info("Unable to confirm 'Following' timeline; continuing with current feed view.")
         else:
             try:
                 # Find the 'Following' tab again to open the sorting menu
-                following_tab = None
-                try:
-                    following_tab = await tab.select("div[role='tab'][aria-label*='Following']", timeout=3)
-                    if not following_tab:
-                        following_tab = await tab.select("a[role='tab'][aria-label*='Following']", timeout=3)
-                except Exception:
-                    pass
+                following_tab_recent = await get_following_tab(tab)
 
-                if following_tab:
-                    await following_tab.click()
+                if following_tab_recent:
+                    await following_tab_recent.click()
                     await tab.sleep(1)
 
                     # Safer approach: find all menu items and locate the 'Recent' option
