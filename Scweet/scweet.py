@@ -67,8 +67,10 @@ class Scweet:
         headless=True,
         scroll_ratio=30,
         code_callback: Optional[Callable[[str, str], Awaitable[str]]] = None,
+        no_sandbox=False,
     ):
         self.driver = None
+        self.no_sandbox = no_sandbox
         self.proxy = proxy
         self.cookies = cookies
         self.user_agent = user_agent
@@ -107,6 +109,9 @@ class Scweet:
             config.add_argument(f"--user-agent={self.user_agent}")
         if self.disable_images:
             config.add_argument(f"--blink-settings=imagesEnabled=false")
+        if self.no_sandbox:
+            config.add_argument("--no-sandbox")
+            config.add_argument("--disable-setuid-sandbox")
         self.driver = await uc.start(config)
         self.main_tab = await self.driver.get("draft:,")
         if self.proxy:
