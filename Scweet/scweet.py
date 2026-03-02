@@ -100,7 +100,7 @@ class Scweet:
             logging.info("Using nodriver's headless mode for Windows/macOS")
             config.headless = True
         if self.headless and platform.system() in ["Linux"]:
-            config.add_argument("--headless=new")
+            config.headless = True
 
         if self.proxy:
             logging.info(f"setting proxy : {self.proxy['host']}:{self.proxy['port']}")
