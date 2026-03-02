@@ -472,6 +472,13 @@ class Scweet:
         url_tag = post_soup.find("a", href=lambda h: h and "/status/" in h)
         tweet_url = url_tag["href"] if url_tag else ""
 
+        is_repost = False
+        social_context = post_soup.find(attrs={"data-testid": "socialContext"})
+        if social_context and ("repost" in social_context.text.lower() or "retweet" in social_context.text.lower()):
+            is_repost = True
+        elif post_soup.find("span", text=lambda t: t and ("Reposted" in t or "Retweeted" in t)):
+            is_repost = True
+
         tweet = {
             "username": username,
             "handle": handle,
@@ -484,6 +491,7 @@ class Scweet:
             "like_cnt": like_cnt,
             "image_links": image_links,
             "tweet_url": tweet_url,
+            "is_repost": is_repost,
         }
 
         return tweet
@@ -900,24 +908,25 @@ class Scweet:
                 continue
 
             if since_dt is not None:
-                post_dt = self._parse_datetime(data.get("postdate", ""))
-                if not post_dt:
-                    continue
-                if post_dt < since_dt:
-                    if old_tweet_state is not None:
-                        old_tweet_state["streak"] = old_tweet_state.get("streak", 0) + 1
-                        if max_old_streak and old_tweet_state["streak"] >= max_old_streak:
-                            if stop_event and not stop_event.is_set():
-                                logging.info(
-                                    f"Encountered {old_tweet_state['streak']} older tweets consecutively; signalling stop."
-                                )
-                                stop_event.set()
-                    if tweet_id in all_posts_data:
-                        all_posts_data.pop(tweet_id, None)
-                    continue
-                else:
-                    if old_tweet_state is not None and old_tweet_state.get("streak"):
-                        old_tweet_state["streak"] = 0
+                if not data.get("is_repost"):
+                    post_dt = self._parse_datetime(data.get("postdate", ""))
+                    if not post_dt:
+                        continue
+                    if post_dt < since_dt:
+                        if old_tweet_state is not None:
+                            old_tweet_state["streak"] = old_tweet_state.get("streak", 0) + 1
+                            if max_old_streak and old_tweet_state["streak"] >= max_old_streak:
+                                if stop_event and not stop_event.is_set():
+                                    logging.info(
+                                        f"Encountered {old_tweet_state['streak']} older tweets consecutively; signalling stop."
+                                    )
+                                    stop_event.set()
+                        if tweet_id in all_posts_data:
+                            all_posts_data.pop(tweet_id, None)
+                        continue
+                    else:
+                        if old_tweet_state is not None and old_tweet_state.get("streak"):
+                            old_tweet_state["streak"] = 0
             if tweet_id not in all_posts_data:
                     all_posts_data[tweet_id] = data
                     if index == "feed":
