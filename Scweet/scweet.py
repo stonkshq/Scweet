@@ -86,11 +86,11 @@ class Scweet:
         # If no custom code callback is provided, use the default get_code_from_email for mailtm
         self.code_callback = code_callback or get_code_from_email
         self.display = None
-        if self.headless:
-            if self.headless and platform.system() in ["Linux"]:
-                logging.info("Starting pyvirtualdisplay for Linux headless mode")
-                self.display = Display(visible=0, size=(1024, 768))
-                self.display.start()
+        # if self.headless:
+        #     if self.headless and platform.system() in ["Linux"]:
+        #         logging.info("Starting pyvirtualdisplay for Linux headless mode")
+        #         self.display = Display(visible=0, size=(1024, 768))
+        #         self.display.start()
 
     async def init_nodriver(self):
         config = uc.Config()
@@ -99,6 +99,8 @@ class Scweet:
         if self.headless and platform.system() in ["Windows", "Darwin"]:
             logging.info("Using nodriver's headless mode for Windows/macOS")
             config.headless = True
+        if self.headless and platform.system() in ["Linux"]:
+            config.add_argument("--headless=new")
 
         if self.proxy:
             logging.info(f"setting proxy : {self.proxy['host']}:{self.proxy['port']}")
