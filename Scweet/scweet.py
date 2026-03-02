@@ -96,10 +96,8 @@ class Scweet:
         config = uc.Config()
         config.lang = "en-US"
         # Enable built-in headless mode for Windows and macOS
-        if self.headless and platform.system() in ["Windows", "Darwin"]:
+        if self.headless: # and platform.system() in ["Windows", "Darwin"]:
             logging.info("Using nodriver's headless mode for Windows/macOS")
-            config.headless = True
-        if self.headless and platform.system() in ["Linux"]:
             config.headless = True
 
         if self.proxy:
