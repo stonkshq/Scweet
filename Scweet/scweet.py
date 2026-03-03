@@ -110,8 +110,7 @@ class Scweet:
         if self.disable_images:
             config.add_argument(f"--blink-settings=imagesEnabled=false")
         if self.no_sandbox:
-            config.add_argument("--no-sandbox")
-            config.add_argument("--disable-setuid-sandbox")
+            config.sandbox = False
         self.driver = await uc.start(config)
         self.main_tab = await self.driver.get("draft:,")
         if self.proxy:
@@ -428,13 +427,13 @@ class Scweet:
 
         # Full tweet text from div[data-testid=tweetText]
         tweet_text_div = post_soup.select_one('div[data-testid="tweetText"]')
-        text = tweet_text_div.get_text(strip=True) if tweet_text_div else ""
+        text = tweet_text_div.get_text().strip() if tweet_text_div else ""
 
         # embedded text (as previously handled)
         embedded_div = post_soup.select_one(
             "div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)"
         )
-        embedded = embedded_div.get_text(strip=True) if embedded_div else ""
+        embedded = embedded_div.get_text().strip() if embedded_div else ""
 
         # Counts from aria-label
         reply_div = post_soup.find("button", {"data-testid": "reply"})

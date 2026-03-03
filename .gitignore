@@ -13,3 +13,5 @@ images/
 Scweet/debug.log
 Scweet/scweet_v1.8.py
 Scweet/user.py
+__pycache__/
+*.pyc
